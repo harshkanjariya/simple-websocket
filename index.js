@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const WebSocket = require('ws');
 
 // Create an Express app
 const app = express();
@@ -9,40 +9,49 @@ app.use(express.raw({ type: 'text/plain' })); // Handle plain text content
 // Create an HTTP server
 const server = http.createServer(app);
 
-// Initialize Socket.IO server instance
-const io = new Server(server);
+// Initialize WebSocket server instance
+const wss = new WebSocket.Server({ server });
 
 let mainSocket;
 // Handle WebSocket connection
-io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+wss.on('connection', (ws) => {
+  console.log('New client connected');
 
-  mainSocket = socket;
+  mainSocket = ws;
+
+  // Send a welcome message when a client connects
+  ws.send('Welcome to the WebSocket server!');
+
   // Handle incoming messages from the client
-  socket.on('message', (message) => {
+  ws.on('message', (message) => {
     console.log(`Received message => ${message}`);
 
     // Broadcast message back to all connected clients, including sender
-    io.emit('message', `Client ${socket.id} says: ${message}`);
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(`Client says: ${message}`);
+      }
+    });
   });
 
   // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  ws.on('close', () => {
+    console.log('Client disconnected');
   });
-
-  // Send a welcome message when a client connects
-  socket.emit('message', 'Welcome to the Socket.IO server!');
 });
 
 // Define a basic HTTP route for testing
 app.get('/', (req, res) => {
-  res.send('Socket.IO server is running!');
+  res.send('WebSocket server is running!');
 });
 
 app.post("/send", (req, res) => {
-  mainSocket.emit("message", req.body.toString());
-  res.send("ok");
+  if (mainSocket && mainSocket.readyState === WebSocket.OPEN) {
+    mainSocket.send(req.body.toString());
+    res.send("Message sent to WebSocket client");
+  } else {
+    res.status(500).send("No active WebSocket connection");
+  }
 });
 
 // Start the server
